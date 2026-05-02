@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hourly Work Logger</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar surface">
+        <div class="title-block">
+          <p class="eyebrow">Hourly Work Logger</p>
+          <h1>后台弹窗控制台</h1>
+          <p class="subtle">网页只负责调参和查看记录，真正的提醒仍然是 macOS 系统弹窗。</p>
+        </div>
+
+        <div class="topbar-actions">
+          <button id="triggerNowButton" class="button button-secondary">立刻弹一次</button>
+          <button id="saveSettingsButton" class="button button-primary">保存设置</button>
+        </div>
+      </header>
+
+      <section class="summary-grid">
+        <article class="metric-card surface accent">
+          <span class="metric-label">当前状态</span>
+          <strong id="monitorStatus" class="metric-value">读取中</strong>
+          <span class="metric-footnote">后台 LaunchAgent 正在按分钟检查是否到达提醒时间。</span>
+        </article>
+
+        <article class="metric-card surface">
+          <span class="metric-label">下一次提醒</span>
+          <strong id="nextReminder" class="metric-value">计算中</strong>
+          <span class="metric-footnote">根据当前参数自动推算。</span>
+        </article>
+
+        <article class="metric-card surface">
+          <span class="metric-label">今天已记录</span>
+          <strong id="todayCount" class="metric-value">0</strong>
+          <span class="metric-footnote">今天通过系统弹窗提交的条数。</span>
+        </article>
+
+        <article class="metric-card surface">
+          <span class="metric-label">总记录数</span>
+          <strong id="totalCount" class="metric-value">0</strong>
+          <span class="metric-footnote">保存在本地 CSV 里的累计记录。</span>
+        </article>
+      </section>
+
+      <main class="workspace-grid">
+        <section class="surface panel settings-panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-kicker">Settings</p>
+              <h2>提醒参数</h2>
+            </div>
+            <button id="refreshButton" class="button button-ghost">刷新状态</button>
+          </div>
+
+          <div class="settings-list">
+            <label class="settings-row">
+              <div>
+                <span class="row-title">后台提醒</span>
+                <span class="row-note">暂停后不会再自动弹系统对话框。</span>
+              </div>
+              <select id="enabled">
+                <option value="true">启用</option>
+                <option value="false">暂停</option>
+              </select>
+            </label>
+
+            <label class="settings-row">
+              <div>
+                <span class="row-title">提醒模式</span>
+                <span class="row-note">按整点偏移，或者按固定分钟间隔。</span>
+              </div>
+              <select id="scheduleMode">
+                <option value="hourly">每小时固定分钟</option>
+                <option value="interval">固定间隔分钟</option>
+              </select>
+            </label>
+
+            <label id="minuteField" class="settings-row">
+              <div>
+                <span class="row-title">每小时第几分钟提醒</span>
+                <span class="row-note">例如填 `0` 代表每小时整点。</span>
+              </div>
+              <input id="minuteOfHour" type="number" min="0" max="59" />
+            </label>
+
+            <label id="intervalField" class="settings-row hidden">
+              <div>
+                <span class="row-title">间隔分钟数</span>
+                <span class="row-note">建议 15 到 120 分钟之间。</span>
+              </div>
+              <input id="intervalMinutes" type="number" min="5" max="240" step="5" />
+            </label>
+
+            <label class="settings-row">
+              <div>
+                <span class="row-title">开始时间</span>
+                <span class="row-note">到达这个时间后，后台提醒才会生效。</span>
+              </div>
+              <input id="activeStart" type="time" />
+            </label>
+
+            <label class="settings-row">
+              <div>
+                <span class="row-title">结束时间</span>
+                <span class="row-note">超过这个时间后，当天将不再自动弹窗。</span>
+              </div>
+              <input id="activeEnd" type="time" />
+            </label>
+
+            <label class="settings-row">
+              <div>
+                <span class="row-title">弹窗标题</span>
+                <span class="row-note">显示在系统弹窗顶部。</span>
+              </div>
+              <input id="title" type="text" maxlength="120" />
+            </label>
+
+            <label class="settings-row textarea-row">
+              <div>
+                <span class="row-title">弹窗文案</span>
+                <span class="row-note">建议一句话说清楚你希望自己填写什么。</span>
+              </div>
+              <input id="promptText" type="text" maxlength="500" />
+            </label>
+          </div>
+
+          <div class="panel-footer">
+            <button id="openFolderButton" class="button button-ghost">查看数据目录</button>
+            <span class="footer-note">配置和记录保存在本机 `Application Support`。</span>
+          </div>
+        </section>
+
+        <section class="surface panel history-panel">
+          <div class="panel-head history-head">
+            <div>
+              <p class="section-kicker">History</p>
+              <h2>最近记录</h2>
+            </div>
+
+            <div class="history-toolbar">
+              <input id="searchInput" type="search" placeholder="搜索记录内容" />
+              <div class="export-toolbar">
+                <input id="exportStartDate" type="date" />
+                <span class="export-separator">至</span>
+                <input id="exportEndDate" type="date" />
+                <button id="exportButton" class="button button-secondary">导出 Markdown</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="recent-strip">
+            <div class="recent-card">
+              <span class="recent-label">最近一次弹窗</span>
+              <strong id="lastEntryTime">暂无</strong>
+            </div>
+            <div class="recent-card">
+              <span class="recent-label">最近一条摘要</span>
+              <strong id="lastEntryPreview">暂无记录</strong>
+            </div>
+          </div>
+
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

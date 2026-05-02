@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "scheduleMode": "hourly",
+  "minuteOfHour": 0,
+  "intervalMinutes": 60,
+  "activeStart": "09:00",
+  "activeEnd": "18:00",
+  "title": "Hourly Work Logger",
+  "promptText": "请记录刚才这一小时你做了什么："
+}
