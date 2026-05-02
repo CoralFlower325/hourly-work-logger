@@ -1,7 +1,10 @@
 const state = {
   status: null,
   toastTimer: null,
+  historyPage: 1,
 };
+
+const HISTORY_PAGE_SIZE = 5;
 
 const els = {
   enabled: document.querySelector("#enabled"),
@@ -26,6 +29,9 @@ const els = {
   lastEntryPreview: document.querySelector("#lastEntryPreview"),
   searchInput: document.querySelector("#searchInput"),
   historyList: document.querySelector("#historyList"),
+  historyPageInfo: document.querySelector("#historyPageInfo"),
+  prevPageButton: document.querySelector("#prevPageButton"),
+  nextPageButton: document.querySelector("#nextPageButton"),
   exportButton: document.querySelector("#exportButton"),
   exportStartDate: document.querySelector("#exportStartDate"),
   exportEndDate: document.querySelector("#exportEndDate"),
@@ -35,6 +41,7 @@ const els = {
 attachEvents();
 seedExportDates();
 loadStatus();
+startStatusPolling();
 
 function attachEvents() {
   els.scheduleMode.addEventListener("change", toggleScheduleFields);
@@ -42,10 +49,15 @@ function attachEvents() {
   els.enabled.addEventListener("change", handleEnabledToggle);
   els.triggerNowButton.addEventListener("click", triggerNow);
   els.refreshButton.addEventListener("click", loadStatus);
-  els.searchInput.addEventListener("input", renderHistory);
+  els.searchInput.addEventListener("input", () => {
+    state.historyPage = 1;
+    renderHistory();
+  });
   els.openFolderButton.addEventListener("click", openDataFolderHint);
   els.exportButton.addEventListener("click", exportCsv);
   els.historyList.addEventListener("click", handleHistoryAction);
+  els.prevPageButton.addEventListener("click", () => changeHistoryPage(-1));
+  els.nextPageButton.addEventListener("click", () => changeHistoryPage(1));
 }
 
 function seedExportDates() {
@@ -59,6 +71,16 @@ async function loadStatus() {
   state.status = await response.json();
   hydrateForm(state.status.config);
   render();
+}
+
+function startStatusPolling() {
+  window.setInterval(async () => {
+    try {
+      await loadStatus();
+    } catch {
+      // Keep the current UI state if a background refresh fails.
+    }
+  }, 15000);
 }
 
 async function saveSettings() {
@@ -179,13 +201,21 @@ function renderHistory() {
   const logs = state.status?.logs || [];
   const keyword = els.searchInput.value.trim().toLowerCase();
   const filtered = logs.filter((item) => item.entry.toLowerCase().includes(keyword));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / HISTORY_PAGE_SIZE));
+  state.historyPage = Math.min(totalPages, Math.max(1, state.historyPage));
+  const startIndex = (state.historyPage - 1) * HISTORY_PAGE_SIZE;
+  const pageItems = filtered.slice(startIndex, startIndex + HISTORY_PAGE_SIZE);
+
+  els.historyPageInfo.textContent = `第 ${state.historyPage} / ${totalPages} 页`;
+  els.prevPageButton.disabled = state.historyPage <= 1;
+  els.nextPageButton.disabled = state.historyPage >= totalPages;
 
   if (filtered.length === 0) {
     els.historyList.innerHTML = '<div class="empty-state">还没有匹配的记录。系统弹窗提交后的内容会显示在这里。</div>';
     return;
   }
 
-  const grouped = groupLogsByDay(filtered);
+  const grouped = groupLogsByDay(pageItems);
 
   els.historyList.innerHTML = Object.entries(grouped)
     .map(
@@ -212,6 +242,11 @@ function renderHistory() {
       `,
     )
     .join("");
+}
+
+function changeHistoryPage(delta) {
+  state.historyPage = Math.max(1, state.historyPage + delta);
+  renderHistory();
 }
 
 function formatDateTime(value) {
@@ -350,6 +385,7 @@ async function handleHistoryAction(event) {
       },
       body: JSON.stringify({ id, entry: trimmed }),
     });
+    state.historyPage = 1;
     await loadStatus();
     return;
   }
@@ -367,6 +403,9 @@ async function handleHistoryAction(event) {
       },
       body: JSON.stringify({ id }),
     });
+    const remainingLogs = (state.status?.logs || []).length - 1;
+    const maxPage = Math.max(1, Math.ceil(Math.max(0, remainingLogs) / HISTORY_PAGE_SIZE));
+    state.historyPage = Math.min(state.historyPage, maxPage);
     await loadStatus();
   }
 }

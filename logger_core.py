@@ -158,6 +158,8 @@ def slot_key_for(now: datetime, config: dict[str, Any]) -> str | None:
     if config["scheduleMode"] == "interval":
         interval = int(config["intervalMinutes"])
         minutes_since_midnight = now.hour * 60 + now.minute
+        if minutes_since_midnight % interval != 0:
+            return None
         slot_index = minutes_since_midnight // interval
         slot_start = slot_index * interval
         return f"interval:{now.strftime('%Y-%m-%d')}:{slot_start}"
@@ -326,12 +328,15 @@ def compute_next_due(now: datetime | None = None) -> str:
     if not config.get("enabled", True):
         return ""
 
+    base = current.replace(second=0, microsecond=0)
+    if current > base:
+        base += timedelta(minutes=1)
+
     for offset in range(0, 60 * 24 * 3):
-        candidate = current + timedelta(minutes=offset)
-        aligned = candidate.replace(second=0, microsecond=0)
-        due, _ = should_prompt(aligned, config, {"lastPromptSlot": ""})
-        if due and aligned >= current.replace(second=0, microsecond=0):
-            return aligned.isoformat(timespec="minutes")
+        candidate = base + timedelta(minutes=offset)
+        due, _ = should_prompt(candidate, config, {"lastPromptSlot": ""})
+        if due:
+            return candidate.isoformat(timespec="minutes")
     return ""
 
 

@@ -54,7 +54,6 @@
               <p class="section-kicker">Settings</p>
               <h2>提醒参数</h2>
             </div>
-            <button id="refreshButton" class="button button-ghost">刷新状态</button>
           </div>
 
           <div class="settings-list">
@@ -143,6 +142,7 @@
             </div>
 
             <div class="history-toolbar">
+              <button id="refreshButton" class="button button-ghost">刷新状态</button>
               <input id="searchInput" type="search" placeholder="搜索记录内容" />
               <div class="export-toolbar">
                 <input id="exportStartDate" type="date" />
@@ -165,6 +165,14 @@
           </div>
 
           <div id="historyList" class="history-list"></div>
+
+          <div class="history-pagination">
+            <span id="historyPageInfo" class="history-page-info">第 1 / 1 页</span>
+            <div class="pagination-actions">
+              <button id="prevPageButton" class="button button-ghost">上一页</button>
+              <button id="nextPageButton" class="button button-ghost">下一页</button>
+            </div>
+          </div>
         </section>
       </main>
     </div>

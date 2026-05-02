@@ -36,19 +36,19 @@ def sync_prompt_agent(enabled: bool) -> None:
 
     if enabled:
         if PROMPT_AGENT_PLIST.exists():
-            subprocess.run(["launchctl", "bootstrap", domain, str(PROMPT_AGENT_PLIST)], check=False)
             subprocess.run(["launchctl", "enable", domain_label], check=False)
+            subprocess.run(["launchctl", "bootstrap", domain, str(PROMPT_AGENT_PLIST)], check=False)
             subprocess.run(["launchctl", "kickstart", "-k", domain_label], check=False)
         return
 
-    subprocess.run(["launchctl", "disable", domain_label], check=False)
     subprocess.run(["launchctl", "bootout", domain, str(PROMPT_AGENT_PLIST)], check=False)
+    subprocess.run(["launchctl", "disable", domain_label], check=False)
 
 
 def prompt_agent_is_running() -> bool:
     domain_label = f"gui/{os.getuid()}/{PROMPT_AGENT_LABEL}"
     result = subprocess.run(["launchctl", "print", domain_label], capture_output=True, text=True, check=False)
-    return result.returncode == 0 and "state = running" in result.stdout
+    return result.returncode == 0
 
 
 class ControlHandler(SimpleHTTPRequestHandler):
