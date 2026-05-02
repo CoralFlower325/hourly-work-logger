@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from http import HTTPStatus
@@ -10,11 +11,44 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from logger_core import APP_DIR, compute_next_due, load_config, load_logs, load_log_summary, load_state, save_config
+from logger_core import (
+    APP_DIR,
+    compute_next_due,
+    delete_log_entry,
+    load_config,
+    load_logs,
+    load_log_summary,
+    load_state,
+    save_config,
+    update_log_entry,
+)
 
 
 ROOT_DIR = Path(__file__).resolve().parent
 PORT = 4173
+PROMPT_AGENT_LABEL = "com.codex.hourly-work-logger"
+PROMPT_AGENT_PLIST = Path.home() / "Library" / "LaunchAgents" / f"{PROMPT_AGENT_LABEL}.plist"
+
+
+def sync_prompt_agent(enabled: bool) -> None:
+    domain_label = f"gui/{os.getuid()}/{PROMPT_AGENT_LABEL}"
+    domain = f"gui/{os.getuid()}"
+
+    if enabled:
+        if PROMPT_AGENT_PLIST.exists():
+            subprocess.run(["launchctl", "bootstrap", domain, str(PROMPT_AGENT_PLIST)], check=False)
+            subprocess.run(["launchctl", "enable", domain_label], check=False)
+            subprocess.run(["launchctl", "kickstart", "-k", domain_label], check=False)
+        return
+
+    subprocess.run(["launchctl", "disable", domain_label], check=False)
+    subprocess.run(["launchctl", "bootout", domain, str(PROMPT_AGENT_PLIST)], check=False)
+
+
+def prompt_agent_is_running() -> bool:
+    domain_label = f"gui/{os.getuid()}/{PROMPT_AGENT_LABEL}"
+    result = subprocess.run(["launchctl", "print", domain_label], capture_output=True, text=True, check=False)
+    return result.returncode == 0 and "state = running" in result.stdout
 
 
 class ControlHandler(SimpleHTTPRequestHandler):
@@ -32,6 +66,7 @@ class ControlHandler(SimpleHTTPRequestHandler):
                     "summary": load_log_summary(),
                     "nextDueAt": compute_next_due(),
                     "appDir": str(APP_DIR),
+                    "promptAgentRunning": prompt_agent_is_running(),
                 }
             )
             return
@@ -43,12 +78,25 @@ class ControlHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/config":
             payload = self.read_json_body()
             config = save_config(payload)
+            sync_prompt_agent(bool(config.get("enabled", True)))
             self.send_json({"ok": True, "config": config})
             return
 
         if parsed.path == "/api/trigger":
             subprocess.Popen([sys.executable, str(ROOT_DIR / "logger_core.py"), "trigger"])
             self.send_json({"ok": True})
+            return
+
+        if parsed.path == "/api/logs/update":
+            payload = self.read_json_body()
+            updated = update_log_entry(str(payload.get("id", "")), str(payload.get("entry", "")).strip())
+            self.send_json({"ok": updated})
+            return
+
+        if parsed.path == "/api/logs/delete":
+            payload = self.read_json_body()
+            deleted = delete_log_entry(str(payload.get("id", "")))
+            self.send_json({"ok": deleted})
             return
 
         self.send_error(HTTPStatus.NOT_FOUND, "Not Found")

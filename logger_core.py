@@ -102,7 +102,7 @@ def save_state(state: dict[str, Any]) -> None:
 def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(DEFAULT_CONFIG)
     normalized.update(config)
-    normalized["enabled"] = bool(normalized.get("enabled", True))
+    normalized["enabled"] = parse_bool(normalized.get("enabled", True))
     normalized["scheduleMode"] = "interval" if normalized.get("scheduleMode") == "interval" else "hourly"
     normalized["minuteOfHour"] = clamp(int(normalized.get("minuteOfHour", 0)), 0, 59)
     normalized["intervalMinutes"] = clamp(int(normalized.get("intervalMinutes", 60)), 5, 240)
@@ -115,6 +115,14 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
 
 def clamp(value: int, min_value: int, max_value: int) -> int:
     return max(min_value, min(max_value, value))
+
+
+def parse_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def normalize_time_string(value: str) -> str:
@@ -230,18 +238,68 @@ def load_logs(limit: int = 200) -> list[dict[str, str]]:
     if not LOG_FILE.exists():
         return []
 
-    with LOG_FILE.open("r", encoding="utf-8", newline="") as handle:
-        rows = list(csv.DictReader(handle))
+    rows = read_all_logs()
 
     recent = rows[-limit:]
     recent.reverse()
     return [
         {
+            "id": row.get("id", ""),
             "timestamp": row.get("timestamp", ""),
             "entry": row.get("entry", ""),
         }
         for row in recent
     ]
+
+
+def read_all_logs() -> list[dict[str, str]]:
+    ensure_app_files()
+    if not LOG_FILE.exists():
+        return []
+
+    with LOG_FILE.open("r", encoding="utf-8", newline="") as handle:
+        return [
+            {
+                "id": str(index),
+                "timestamp": row.get("timestamp", ""),
+                "entry": row.get("entry", ""),
+            }
+            for index, row in enumerate(csv.DictReader(handle), start=1)
+        ]
+
+
+def write_all_logs(rows: list[dict[str, str]]) -> None:
+    ensure_app_files()
+    with LOG_FILE.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["timestamp", "entry"])
+        for row in rows:
+            writer.writerow([row.get("timestamp", ""), row.get("entry", "")])
+
+
+def update_log_entry(log_id: str, entry: str) -> bool:
+    rows = read_all_logs()
+    updated = False
+
+    for row in rows:
+        if row.get("id") == str(log_id):
+            row["entry"] = entry
+            updated = True
+            break
+
+    if updated:
+        write_all_logs(rows)
+    return updated
+
+
+def delete_log_entry(log_id: str) -> bool:
+    rows = read_all_logs()
+    filtered = [row for row in rows if row.get("id") != str(log_id)]
+    if len(filtered) == len(rows):
+        return False
+
+    write_all_logs(filtered)
+    return True
 
 
 def load_log_summary() -> dict[str, int]:

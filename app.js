@@ -1,5 +1,6 @@
 const state = {
   status: null,
+  toastTimer: null,
 };
 
 const els = {
@@ -28,6 +29,7 @@ const els = {
   exportButton: document.querySelector("#exportButton"),
   exportStartDate: document.querySelector("#exportStartDate"),
   exportEndDate: document.querySelector("#exportEndDate"),
+  toast: document.querySelector("#toast"),
 };
 
 attachEvents();
@@ -37,11 +39,13 @@ loadStatus();
 function attachEvents() {
   els.scheduleMode.addEventListener("change", toggleScheduleFields);
   els.saveSettingsButton.addEventListener("click", saveSettings);
+  els.enabled.addEventListener("change", handleEnabledToggle);
   els.triggerNowButton.addEventListener("click", triggerNow);
   els.refreshButton.addEventListener("click", loadStatus);
   els.searchInput.addEventListener("input", renderHistory);
   els.openFolderButton.addEventListener("click", openDataFolderHint);
   els.exportButton.addEventListener("click", exportCsv);
+  els.historyList.addEventListener("click", handleHistoryAction);
 }
 
 function seedExportDates() {
@@ -58,25 +62,44 @@ async function loadStatus() {
 }
 
 async function saveSettings() {
-  const payload = readSettingsFromForm();
-  const response = await fetch("/api/config", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
+  return saveSettingsInternal({ showToast: true });
+}
 
-  const result = await response.json();
-  state.status = {
-    ...(state.status || {}),
-    config: result.config,
-    nextDueAt: state.status?.nextDueAt || "",
-    logs: state.status?.logs || [],
-    state: state.status?.state || {},
-    appDir: state.status?.appDir || "",
-  };
-  await loadStatus();
+async function saveSettingsInternal({ showToast }) {
+  const payload = readSettingsFromForm();
+  setSavingState(true);
+  try {
+    const response = await fetch("/api/config", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const result = await response.json();
+    state.status = {
+      ...(state.status || {}),
+      config: result.config,
+      nextDueAt: state.status?.nextDueAt || "",
+      logs: state.status?.logs || [],
+      state: state.status?.state || {},
+      appDir: state.status?.appDir || "",
+    };
+    await loadStatus();
+
+    if (showToast) {
+      showToastMessage(result.config.enabled ? "设置已保存，后台弹窗已启用" : "设置已保存，后台弹窗已暂停");
+    }
+  } catch {
+    showToastMessage("保存失败，请再试一次");
+  } finally {
+    setSavingState(false);
+  }
+}
+
+async function handleEnabledToggle() {
+  await saveSettingsInternal({ showToast: true });
 }
 
 async function triggerNow() {
@@ -134,8 +157,9 @@ function render() {
   const logs = state.status.logs || [];
   const runtimeState = state.status.state || {};
   const summary = state.status.summary || { todayCount: 0, totalCount: logs.length };
+  const promptAgentRunning = Boolean(state.status.promptAgentRunning);
 
-  els.monitorStatus.textContent = config.enabled ? "后台监督中" : "已暂停";
+  els.monitorStatus.textContent = config.enabled && promptAgentRunning ? "后台监督中" : "已暂停";
   els.nextReminder.textContent = state.status.nextDueAt ? formatDateTime(state.status.nextDueAt) : "未安排";
   els.todayCount.textContent = String(summary.todayCount);
   els.totalCount.textContent = String(summary.totalCount);
@@ -143,6 +167,12 @@ function render() {
   els.lastEntryPreview.textContent = runtimeState.lastEntryPreview || "暂无记录";
 
   renderHistory();
+}
+
+function setSavingState(saving) {
+  els.saveSettingsButton.disabled = saving;
+  els.enabled.disabled = saving;
+  els.saveSettingsButton.textContent = saving ? "保存中..." : "保存设置";
 }
 
 function renderHistory() {
@@ -168,7 +198,10 @@ function renderHistory() {
                 <article class="history-item">
                   <div class="history-meta">
                     <span>${formatDateTime(item.timestamp)}</span>
-                    <span>系统弹窗记录</span>
+                    <span class="history-actions">
+                      <button class="mini-action" data-action="edit" data-id="${item.id}">编辑</button>
+                      <button class="mini-action danger" data-action="delete" data-id="${item.id}">删除</button>
+                    </span>
                   </div>
                   <div class="history-content">${escapeHtml(item.entry)}</div>
                 </article>
@@ -207,6 +240,21 @@ function escapeHtml(text) {
 function openDataFolderHint() {
   const appDir = state.status?.appDir || "~/Library/Application Support/HourlyWorkLogger";
   window.alert(`数据目录：\n${appDir}\n\n你也可以在终端执行：\nopen "${appDir}"`);
+}
+
+function showToastMessage(message) {
+  if (state.toastTimer) {
+    clearTimeout(state.toastTimer);
+  }
+
+  els.toast.textContent = message;
+  els.toast.classList.remove("hidden");
+  els.toast.classList.add("visible");
+
+  state.toastTimer = setTimeout(() => {
+    els.toast.classList.remove("visible");
+    els.toast.classList.add("hidden");
+  }, 2200);
 }
 
 function exportCsv() {
@@ -267,4 +315,58 @@ function buildMarkdownExport(logs, startDate, endDate) {
   }
 
   return [...header, ...body].join("\n");
+}
+
+async function handleHistoryAction(event) {
+  const button = event.target.closest("[data-action]");
+  if (!button) {
+    return;
+  }
+
+  const action = button.dataset.action;
+  const id = button.dataset.id;
+  const logs = state.status?.logs || [];
+  const target = logs.find((item) => item.id === id);
+  if (!target) {
+    return;
+  }
+
+  if (action === "edit") {
+    const nextEntry = window.prompt("修改这条记录：", target.entry);
+    if (nextEntry === null) {
+      return;
+    }
+
+    const trimmed = nextEntry.trim();
+    if (!trimmed) {
+      window.alert("记录内容不能为空。");
+      return;
+    }
+
+    await fetch("/api/logs/update", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id, entry: trimmed }),
+    });
+    await loadStatus();
+    return;
+  }
+
+  if (action === "delete") {
+    const confirmed = window.confirm("确定删除这条记录吗？");
+    if (!confirmed) {
+      return;
+    }
+
+    await fetch("/api/logs/delete", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id }),
+    });
+    await loadStatus();
+  }
 }

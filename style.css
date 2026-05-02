@@ -375,6 +375,28 @@ select:focus {
   color: var(--muted);
 }
 
+.history-actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.mini-action {
+  border: 0;
+  background: rgba(118, 118, 128, 0.1);
+  color: var(--muted);
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mini-action.danger {
+  color: #d4483b;
+}
+
 .history-content {
   font-size: 14px;
   line-height: 1.6;
@@ -383,6 +405,30 @@ select:focus {
 
 .hidden {
   display: none !important;
+}
+
+.toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 50;
+  min-width: 280px;
+  max-width: 420px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(28, 28, 30, 0.88);
+  color: white;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.2);
+  font-size: 14px;
+  line-height: 1.4;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.toast.visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 @media (max-width: 1320px) {
@@ -484,5 +530,13 @@ select:focus {
 
   .history-meta {
     flex-direction: column;
+  }
+
+  .toast {
+    right: 16px;
+    bottom: 16px;
+    left: 16px;
+    max-width: none;
+    min-width: 0;
   }
 }
