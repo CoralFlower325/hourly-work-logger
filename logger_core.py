@@ -17,6 +17,7 @@ APP_DIR = Path.home() / "Library" / "Application Support" / "HourlyWorkLogger"
 LOG_FILE = APP_DIR / "hourly-log.csv"
 CONFIG_FILE = APP_DIR / "config.json"
 STATE_FILE = APP_DIR / "state.json"
+READING_GUARD_STATE_FILE = APP_DIR / "reading-guard-state.json"
 PROMPT_SCRIPT_FILE = APP_DIR / "hourly_prompt.js"
 
 
@@ -29,6 +30,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "activeEnd": "18:00",
     "title": "Hourly Work Logger",
     "promptText": "请记录刚才这一小时你做了什么：",
+    "readingGuard": {
+        "enabled": False,
+        "dailyReadingTargetSeconds": 1800,
+        "whitelist": ["图书", "Books", "预览", "Preview", "Kindle"],
+        "blacklist": ["WeChat", "微信", "QQ", "网易云音乐", "Douyin"],
+    },
 }
 
 
@@ -36,6 +43,19 @@ DEFAULT_STATE: dict[str, Any] = {
     "lastPromptAt": "",
     "lastPromptSlot": "",
     "lastEntryPreview": "",
+}
+
+
+DEFAULT_READING_GUARD_STATE: dict[str, Any] = {
+    "date": "",
+    "readingSeconds": 0,
+    "currentFrontmostApp": "",
+    "currentFrontmostBundleID": "",
+    "currentFrontmostExecutable": "",
+    "lastObservedApp": "",
+    "lastObservedBundleID": "",
+    "lastBlockedApp": "",
+    "lastBlockedAt": "",
 }
 
 
@@ -51,6 +71,8 @@ def ensure_app_files() -> None:
       save_json(CONFIG_FILE, DEFAULT_CONFIG)
     if not STATE_FILE.exists():
       save_json(STATE_FILE, DEFAULT_STATE)
+    if not READING_GUARD_STATE_FILE.exists():
+      save_json(READING_GUARD_STATE_FILE, DEFAULT_READING_GUARD_STATE)
     if not LOG_FILE.exists():
       with LOG_FILE.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
@@ -79,7 +101,7 @@ def save_json(path: Path, data: dict[str, Any]) -> None:
 
 def load_config() -> dict[str, Any]:
     ensure_app_files()
-    return load_json(CONFIG_FILE, DEFAULT_CONFIG)
+    return normalize_config(load_json(CONFIG_FILE, DEFAULT_CONFIG))
 
 
 def save_config(config: dict[str, Any]) -> dict[str, Any]:
@@ -99,6 +121,29 @@ def save_state(state: dict[str, Any]) -> None:
     save_json(STATE_FILE, state)
 
 
+def load_reading_guard_state() -> dict[str, Any]:
+    ensure_app_files()
+    state = load_json(READING_GUARD_STATE_FILE, DEFAULT_READING_GUARD_STATE)
+    state["date"] = str(state.get("date", ""))
+    state["readingSeconds"] = max(0, int(state.get("readingSeconds", 0)))
+    state["currentFrontmostApp"] = str(state.get("currentFrontmostApp", ""))
+    state["currentFrontmostBundleID"] = str(state.get("currentFrontmostBundleID", ""))
+    state["currentFrontmostExecutable"] = str(state.get("currentFrontmostExecutable", ""))
+    state["lastObservedApp"] = str(state.get("lastObservedApp", ""))
+    state["lastObservedBundleID"] = str(state.get("lastObservedBundleID", ""))
+    state["lastBlockedApp"] = str(state.get("lastBlockedApp", ""))
+    state["lastBlockedAt"] = str(state.get("lastBlockedAt", ""))
+    return state
+
+
+def save_reading_guard_state(state: dict[str, Any]) -> None:
+    ensure_app_files()
+    normalized = dict(DEFAULT_READING_GUARD_STATE)
+    normalized.update(state)
+    normalized["readingSeconds"] = max(0, int(normalized.get("readingSeconds", 0)))
+    save_json(READING_GUARD_STATE_FILE, normalized)
+
+
 def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(DEFAULT_CONFIG)
     normalized.update(config)
@@ -110,6 +155,18 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     normalized["activeEnd"] = normalize_time_string(str(normalized.get("activeEnd", "18:00")))
     normalized["title"] = str(normalized.get("title", DEFAULT_CONFIG["title"]))[:120]
     normalized["promptText"] = str(normalized.get("promptText", DEFAULT_CONFIG["promptText"]))[:500]
+    normalized["readingGuard"] = normalize_reading_guard_config(normalized.get("readingGuard", {}))
+    return normalized
+
+
+def normalize_reading_guard_config(value: Any) -> dict[str, Any]:
+    source = value if isinstance(value, dict) else {}
+    normalized = dict(DEFAULT_CONFIG["readingGuard"])
+    normalized.update(source)
+    normalized["enabled"] = parse_bool(normalized.get("enabled", False))
+    normalized["dailyReadingTargetSeconds"] = clamp(int(normalized.get("dailyReadingTargetSeconds", 1800)), 60, 24 * 60 * 60)
+    normalized["whitelist"] = normalize_string_list(normalized.get("whitelist", DEFAULT_CONFIG["readingGuard"]["whitelist"]))
+    normalized["blacklist"] = normalize_string_list(normalized.get("blacklist", DEFAULT_CONFIG["readingGuard"]["blacklist"]))
     return normalized
 
 
@@ -123,6 +180,26 @@ def parse_bool(value: Any) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "on"}
     return bool(value)
+
+
+def normalize_string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        items = value
+    elif isinstance(value, str):
+        items = value.replace("\r", "\n").replace(",", "\n").split("\n")
+    else:
+        items = []
+
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for item in items:
+        text = str(item).strip()
+        key = text.casefold()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        normalized.append(text[:120])
+    return normalized
 
 
 def normalize_time_string(value: str) -> str:

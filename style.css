@@ -44,7 +44,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -58,20 +59,53 @@ select {
   gap: 18px;
 }
 
+.workspace-stack {
+  min-height: 0;
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.module-shell {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.module-hero {
+  display: grid;
+  gap: 8px;
+}
+
+.module-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 2px 4px 0;
+}
+
+.module-head h2 {
+  margin: 0;
+  font-size: 28px;
+  letter-spacing: -0.03em;
+}
+
+.module-note {
+  margin: 0;
+  max-width: 420px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: right;
+}
+
 .surface {
   background: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow);
   backdrop-filter: blur(22px);
-}
-
-.topbar {
-  padding: 22px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
 }
 
 .title-block h1,
@@ -105,12 +139,6 @@ select {
 .subtle {
   margin: 6px 0 0;
   font-size: 14px;
-}
-
-.topbar-actions {
-  display: flex;
-  gap: 10px;
-  flex-shrink: 0;
 }
 
 .button {
@@ -156,14 +184,35 @@ select {
   gap: 16px;
 }
 
+.embedded-summary-grid {
+  gap: 12px;
+}
+
 .metric-card {
-  padding: 18px 20px;
-  min-height: 126px;
+  padding: 16px 18px;
+  min-height: 116px;
   display: grid;
   align-content: start;
   gap: 8px;
   position: relative;
   overflow: hidden;
+}
+
+.embedded-summary-grid .metric-card {
+  background: rgba(255, 255, 255, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 22px;
+  box-shadow:
+    0 10px 26px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.embedded-summary-grid .metric-value {
+  font-size: 22px;
+}
+
+.embedded-summary-grid .metric-footnote {
+  font-size: 12px;
 }
 
 .metric-card.accent {
@@ -218,6 +267,14 @@ select {
     inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
+.inner-panel {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.62);
+  box-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
 .panel-head {
   display: flex;
   align-items: center;
@@ -233,6 +290,18 @@ select {
   display: grid;
   gap: 12px;
   align-content: start;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.settings-section-label {
+  margin-top: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .settings-row {
@@ -268,9 +337,9 @@ select {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
-  height: 40px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface-strong);
@@ -279,8 +348,21 @@ select {
   font-size: 14px;
 }
 
+input,
+select {
+  height: 40px;
+}
+
+textarea {
+  min-height: 104px;
+  padding: 10px 12px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   outline: none;
   border-color: rgba(0, 122, 255, 0.4);
   box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.12);
@@ -288,6 +370,11 @@ select:focus {
 
 .textarea-row input {
   height: 44px;
+}
+
+.textarea-stack {
+  grid-template-columns: 1fr;
+  align-items: stretch;
 }
 
 .panel-footer {
@@ -363,6 +450,74 @@ select:focus {
 .recent-card strong {
   font-size: 15px;
   line-height: 1.4;
+}
+
+.recent-note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.guard-section {
+  gap: 18px;
+}
+
+.guard-layout {
+  display: grid;
+  grid-template-columns: minmax(380px, 440px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.guard-settings {
+  min-width: 0;
+}
+
+.guard-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+
+.guard-status-shell {
+  min-width: 0;
+  padding: 16px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(247, 249, 252, 0.9), rgba(255, 255, 255, 0.72));
+  border: 1px solid rgba(60, 60, 67, 0.08);
+  display: grid;
+  gap: 14px;
+}
+
+.guard-status-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.guard-status-head h3 {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.compact-card {
+  min-height: 86px;
+  padding: 13px 14px;
+  gap: 5px;
+}
+
+.compact-card strong {
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.highlight-card {
+  background: linear-gradient(180deg, rgba(0, 122, 255, 0.1), rgba(255, 255, 255, 0.86));
+  border-color: rgba(0, 122, 255, 0.18);
 }
 
 .history-list {
@@ -567,6 +722,10 @@ select:focus {
 
   .settings-row,
   .recent-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .guard-strip {
     grid-template-columns: 1fr;
   }
 

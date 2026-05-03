@@ -18,6 +18,7 @@ from logger_core import (
     load_config,
     load_logs,
     load_log_summary,
+    load_reading_guard_state,
     load_state,
     save_config,
     update_log_entry,
@@ -37,7 +38,9 @@ def sync_prompt_agent(enabled: bool) -> None:
     if enabled:
         if PROMPT_AGENT_PLIST.exists():
             subprocess.run(["launchctl", "enable", domain_label], check=False)
-            subprocess.run(["launchctl", "bootstrap", domain, str(PROMPT_AGENT_PLIST)], check=False)
+            status = subprocess.run(["launchctl", "print", domain_label], capture_output=True, text=True, check=False)
+            if status.returncode != 0:
+                subprocess.run(["launchctl", "bootstrap", domain, str(PROMPT_AGENT_PLIST)], check=False)
             subprocess.run(["launchctl", "kickstart", "-k", domain_label], check=False)
         return
 
@@ -67,6 +70,7 @@ class ControlHandler(SimpleHTTPRequestHandler):
                     "nextDueAt": compute_next_due(),
                     "appDir": str(APP_DIR),
                     "promptAgentRunning": prompt_agent_is_running(),
+                    "readingGuardState": load_reading_guard_state(),
                 }
             )
             return
