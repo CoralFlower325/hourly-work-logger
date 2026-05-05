@@ -3,19 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Hourly Work Logger</title>
+    <title>行为引擎 · Behavior Engine</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
+    <div id="waterRippleLayer" class="water-ripple-layer" aria-hidden="true"></div>
     <div class="app-shell">
       <main class="workspace-stack">
         <section class="module-shell surface">
           <div class="module-head">
             <div>
-              <p class="section-kicker">Reminder Module</p>
-              <h2>记录弹窗</h2>
+              <p class="section-kicker">Time Anchor</p>
+              <h2>强制锚点</h2>
             </div>
-            <p class="module-note">这一部分负责工作记录提醒、历史查看和导出。</p>
+            <p class="module-note">这一部分负责强制锚点、历史查看和导出。</p>
           </div>
 
           <div class="module-hero">
@@ -56,7 +57,7 @@
               </div>
 
               <div class="settings-list">
-                <div class="settings-section-label">工作记录提醒</div>
+                <div class="settings-section-label">强制锚点设置</div>
                 <label class="settings-row">
                   <div>
                     <span class="row-title">后台提醒</span>
@@ -136,20 +137,23 @@
 
             <section class="surface panel history-panel inner-panel">
               <div class="panel-head history-head">
-                <div>
+                <div class="history-title-block">
                   <p class="section-kicker">History</p>
                   <h2>最近记录</h2>
                 </div>
 
-                <div class="history-toolbar">
-                  <button id="refreshButton" class="button button-ghost">刷新状态</button>
-                  <input id="searchInput" type="search" placeholder="搜索记录内容" />
-                  <div class="export-toolbar">
-                    <input id="exportStartDate" type="date" />
-                    <span class="export-separator">至</span>
-                    <input id="exportEndDate" type="date" />
-                    <button id="exportButton" class="button button-secondary">导出 Markdown</button>
-                    <button id="triggerNowButton" class="button button-ghost">立刻弹一次</button>
+                <div class="history-head-actions">
+                  <div class="history-toolbar">
+                    <input id="searchInput" type="search" placeholder="搜索记录内容" />
+                    <div class="history-date-toolbar">
+                      <input id="exportStartDate" type="date" />
+                      <span class="export-separator">至</span>
+                      <input id="exportEndDate" type="date" />
+                    </div>
+                    <div class="export-toolbar">
+                      <button id="exportButton" class="button button-secondary">导出 Markdown</button>
+                      <button id="triggerNowButton" class="button button-ghost">立刻弹一次</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -181,8 +185,8 @@
         <section class="module-shell surface">
           <div class="module-head">
             <div>
-              <p class="section-kicker">Reading Guard</p>
-              <h2>阅读守护</h2>
+              <p class="section-kicker">Entertainment Pass</p>
+              <h2>娱乐通行证</h2>
             </div>
             <p class="module-note">这一部分负责阅读目标、允许应用和娱乐拦截状态。</p>
           </div>
@@ -191,10 +195,10 @@
             <div class="guard-layout">
               <div class="guard-settings">
                 <div class="settings-list">
-                  <div class="settings-section-label">阅读拦截设置</div>
+                  <div class="settings-section-label">娱乐通行证设置</div>
                   <label class="settings-row">
                     <div>
-                      <span class="row-title">阅读拦截</span>
+                    <span class="row-title">娱乐通行证</span>
                       <span class="row-note">未达到阅读时长前，黑名单 App 会被强制退出。切换后会自动保存。</span>
                     </div>
                     <select id="readingGuardEnabled">
@@ -232,8 +236,8 @@
               <div class="guard-status-shell">
                 <div class="guard-status-head">
                   <div>
-                    <p class="section-kicker">Reading Status</p>
-                    <h3>阅读守护状态</h3>
+                    <p class="section-kicker">Pass Status</p>
+                    <h3>娱乐通行证状态</h3>
                   </div>
                 </div>
 
@@ -257,7 +261,160 @@
                     <strong id="lastBlockedApp">暂无</strong>
                   </div>
                 </div>
+
+                <section class="blacklist-usage-shell">
+                  <div class="analytics-section-head">
+                    <h3>黑名单使用时长</h3>
+                    <span class="analytics-summary">每添加一个黑名单 App，这里就会多一个当天用量窗口。</span>
+                  </div>
+                  <div id="blacklistUsageList" class="blacklist-usage-list">
+                    <div class="empty-state">添加黑名单 App 后，这里会按数量自动出现每日使用时长窗口。</div>
+                  </div>
+                </section>
               </div>
+            </div>
+          </section>
+        </section>
+
+        <section class="module-shell surface">
+          <div class="module-head">
+            <div>
+              <p class="section-kicker">Mirror Review</p>
+              <h2>镜面复盘</h2>
+            </div>
+            <p class="module-note">调用大模型把记录分类成学习、工作、娱乐，并显示每日与每周的 24 小时分布图。</p>
+          </div>
+
+          <section class="analytics-layout">
+            <section class="surface panel analytics-settings-panel inner-panel">
+              <div class="panel-head">
+                <div>
+                  <p class="section-kicker">Review Settings</p>
+                  <h2>模型配置</h2>
+                </div>
+              </div>
+
+              <div class="settings-list">
+                <label class="settings-row">
+                  <div>
+                    <span class="row-title">API Base URL</span>
+                    <span class="row-note">默认是 OpenAI 官方 `Responses API` 地址，也兼容 OpenAI 风格接口。</span>
+                  </div>
+                  <input id="aiBaseURL" type="text" maxlength="200" />
+                </label>
+
+                <label class="settings-row">
+                  <div>
+                    <span class="row-title">模型名称</span>
+                    <span class="row-note">例如 `gpt-5.2`，用于分类学习 / 工作 / 娱乐。</span>
+                  </div>
+                  <input id="aiModel" type="text" maxlength="120" />
+                </label>
+
+                <label class="settings-row textarea-row textarea-stack">
+                  <div>
+                    <span class="row-title">API Key</span>
+                    <span class="row-note">只保存在本机配置里。留空时会尝试读取环境变量 `OPENAI_API_KEY`。</span>
+                  </div>
+                  <input id="aiApiKey" type="password" maxlength="500" autocomplete="off" />
+                </label>
+
+                <label class="settings-row">
+                  <div>
+                    <span class="row-title">分析日期</span>
+                    <span class="row-note">用于查看当天分布图，以及按这一周生成周视图。</span>
+                  </div>
+                  <input id="analyticsDate" type="date" />
+                </label>
+              </div>
+            </section>
+
+            <section class="surface panel analytics-board-panel inner-panel">
+              <div class="panel-head analytics-head">
+                <div>
+                  <p class="section-kicker">Review Board</p>
+                  <h2>时间分布图</h2>
+                </div>
+
+                <div class="history-toolbar">
+                  <button id="analyzeDayButton" class="button button-secondary">分析当天</button>
+                  <button id="analyzeWeekButton" class="button button-ghost">分析本周</button>
+                </div>
+              </div>
+
+              <div class="analytics-status-bar">
+                <span id="analyticsStatus" class="analytics-status-text">选择日期后即可分析当天或本周记录。</span>
+                <div class="analytics-legend">
+                  <span class="legend-chip legend-study">学习</span>
+                  <span class="legend-chip legend-work">工作</span>
+                  <span class="legend-chip legend-fun">娱乐</span>
+                  <span class="legend-chip legend-empty">空白</span>
+                </div>
+              </div>
+
+              <section class="analytics-section">
+                <div class="analytics-section-head">
+                  <h3>日视图</h3>
+                  <span id="dailySummary" class="analytics-summary">尚未分析</span>
+                </div>
+                <div id="dailyGrid" class="day-grid"></div>
+              </section>
+
+              <section class="analytics-section">
+                <div class="analytics-section-head">
+                  <h3>周视图</h3>
+                  <span id="weeklySummary" class="analytics-summary">尚未分析</span>
+                </div>
+                <div id="weeklyGrid" class="week-grid"></div>
+              </section>
+            </section>
+          </section>
+        </section>
+
+        <section class="module-shell surface">
+          <div class="module-head">
+            <div>
+              <p class="section-kicker">Hermes Usage</p>
+              <h2>Hermes 用量看板</h2>
+            </div>
+            <p class="module-note">读取本机 Hermes 状态库，展示当前会话模型、Token 消耗和花费。</p>
+          </div>
+
+          <section class="surface panel hermes-panel inner-panel">
+            <div class="panel-head">
+              <div>
+                <p class="section-kicker">Usage Snapshot</p>
+                <h2>实时用量</h2>
+              </div>
+              <span id="hermesUsageStatus" class="analytics-summary">正在读取 Hermes 状态库...</span>
+            </div>
+
+            <div class="hermes-filter-bar">
+              <label class="hermes-filter">
+                <span class="recent-label">统计方式</span>
+                <select id="hermesScopeSelect">
+                  <option value="total">总消耗量</option>
+                  <option value="session">单会话</option>
+                </select>
+              </label>
+
+              <label class="hermes-filter">
+                <span class="recent-label">模型</span>
+                <select id="hermesModelSelect">
+                  <option value="">全部模型</option>
+                </select>
+              </label>
+
+              <label class="hermes-filter hermes-filter-session">
+                <span class="recent-label">会话</span>
+                <select id="hermesSessionSelect">
+                  <option value="">选择会话</option>
+                </select>
+              </label>
+            </div>
+
+            <div id="hermesUsageBoard" class="hermes-usage-board">
+              <div class="empty-state">正在加载 Hermes 的模型、Token 与花费数据。</div>
             </div>
           </section>
         </section>

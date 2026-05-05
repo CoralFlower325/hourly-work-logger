@@ -28,13 +28,19 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "intervalMinutes": 60,
     "activeStart": "09:00",
     "activeEnd": "18:00",
-    "title": "Hourly Work Logger",
+    "title": "行为引擎",
     "promptText": "请记录刚才这一小时你做了什么：",
     "readingGuard": {
         "enabled": False,
         "dailyReadingTargetSeconds": 1800,
         "whitelist": ["图书", "Books", "预览", "Preview", "Kindle"],
         "blacklist": ["WeChat", "微信", "QQ", "网易云音乐", "Douyin"],
+        "blacklistLimits": {},
+    },
+    "aiClassification": {
+        "apiKey": "",
+        "baseURL": "https://api.openai.com/v1",
+        "model": "gpt-5.2",
     },
 }
 
@@ -49,6 +55,7 @@ DEFAULT_STATE: dict[str, Any] = {
 DEFAULT_READING_GUARD_STATE: dict[str, Any] = {
     "date": "",
     "readingSeconds": 0,
+    "blacklistUsageSeconds": {},
     "currentFrontmostApp": "",
     "currentFrontmostBundleID": "",
     "currentFrontmostExecutable": "",
@@ -56,6 +63,7 @@ DEFAULT_READING_GUARD_STATE: dict[str, Any] = {
     "lastObservedBundleID": "",
     "lastBlockedApp": "",
     "lastBlockedAt": "",
+    "lastBlockedReason": "",
 }
 
 
@@ -126,6 +134,7 @@ def load_reading_guard_state() -> dict[str, Any]:
     state = load_json(READING_GUARD_STATE_FILE, DEFAULT_READING_GUARD_STATE)
     state["date"] = str(state.get("date", ""))
     state["readingSeconds"] = max(0, int(state.get("readingSeconds", 0)))
+    state["blacklistUsageSeconds"] = normalize_seconds_map(state.get("blacklistUsageSeconds"))
     state["currentFrontmostApp"] = str(state.get("currentFrontmostApp", ""))
     state["currentFrontmostBundleID"] = str(state.get("currentFrontmostBundleID", ""))
     state["currentFrontmostExecutable"] = str(state.get("currentFrontmostExecutable", ""))
@@ -133,6 +142,7 @@ def load_reading_guard_state() -> dict[str, Any]:
     state["lastObservedBundleID"] = str(state.get("lastObservedBundleID", ""))
     state["lastBlockedApp"] = str(state.get("lastBlockedApp", ""))
     state["lastBlockedAt"] = str(state.get("lastBlockedAt", ""))
+    state["lastBlockedReason"] = str(state.get("lastBlockedReason", ""))
     return state
 
 
@@ -141,6 +151,7 @@ def save_reading_guard_state(state: dict[str, Any]) -> None:
     normalized = dict(DEFAULT_READING_GUARD_STATE)
     normalized.update(state)
     normalized["readingSeconds"] = max(0, int(normalized.get("readingSeconds", 0)))
+    normalized["blacklistUsageSeconds"] = normalize_seconds_map(normalized.get("blacklistUsageSeconds"))
     save_json(READING_GUARD_STATE_FILE, normalized)
 
 
@@ -156,6 +167,7 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     normalized["title"] = str(normalized.get("title", DEFAULT_CONFIG["title"]))[:120]
     normalized["promptText"] = str(normalized.get("promptText", DEFAULT_CONFIG["promptText"]))[:500]
     normalized["readingGuard"] = normalize_reading_guard_config(normalized.get("readingGuard", {}))
+    normalized["aiClassification"] = normalize_ai_classification_config(normalized.get("aiClassification", {}))
     return normalized
 
 
@@ -167,6 +179,17 @@ def normalize_reading_guard_config(value: Any) -> dict[str, Any]:
     normalized["dailyReadingTargetSeconds"] = clamp(int(normalized.get("dailyReadingTargetSeconds", 1800)), 60, 24 * 60 * 60)
     normalized["whitelist"] = normalize_string_list(normalized.get("whitelist", DEFAULT_CONFIG["readingGuard"]["whitelist"]))
     normalized["blacklist"] = normalize_string_list(normalized.get("blacklist", DEFAULT_CONFIG["readingGuard"]["blacklist"]))
+    normalized["blacklistLimits"] = normalize_blacklist_limits(normalized.get("blacklistLimits"), normalized["blacklist"])
+    return normalized
+
+
+def normalize_ai_classification_config(value: Any) -> dict[str, Any]:
+    source = value if isinstance(value, dict) else {}
+    normalized = dict(DEFAULT_CONFIG["aiClassification"])
+    normalized.update(source)
+    normalized["apiKey"] = str(normalized.get("apiKey", ""))[:500]
+    normalized["baseURL"] = str(normalized.get("baseURL", DEFAULT_CONFIG["aiClassification"]["baseURL"])).strip()[:200] or DEFAULT_CONFIG["aiClassification"]["baseURL"]
+    normalized["model"] = str(normalized.get("model", DEFAULT_CONFIG["aiClassification"]["model"])).strip()[:120] or DEFAULT_CONFIG["aiClassification"]["model"]
     return normalized
 
 
@@ -199,6 +222,37 @@ def normalize_string_list(value: Any) -> list[str]:
             continue
         seen.add(key)
         normalized.append(text[:120])
+    return normalized
+
+
+def normalize_seconds_map(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+
+    normalized: dict[str, int] = {}
+    for key, seconds in value.items():
+        text = str(key).strip()[:120]
+        if not text:
+            continue
+        try:
+            parsed_seconds = int(seconds)
+        except (TypeError, ValueError):
+            continue
+        normalized[text] = max(0, parsed_seconds)
+    return normalized
+
+
+def normalize_blacklist_limits(value: Any, blacklist: list[str]) -> dict[str, int]:
+    source = value if isinstance(value, dict) else {}
+    normalized: dict[str, int] = {}
+
+    for item in blacklist:
+        try:
+            raw_seconds = int(source.get(item, 60 * 60))
+        except (TypeError, ValueError):
+            raw_seconds = 60 * 60
+        normalized[item] = clamp(raw_seconds, 60, 24 * 60 * 60)
+
     return normalized
 
 

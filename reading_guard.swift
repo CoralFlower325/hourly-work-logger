@@ -43,8 +43,10 @@ final class ReadingGuardMonitor {
         if state.date != today {
             state.date = today
             state.readingSeconds = 0
+            state.blacklistUsageSeconds = [:]
             state.lastBlockedApp = ""
             state.lastBlockedAt = ""
+            state.lastBlockedReason = ""
         }
 
         let frontmostApplication = NSWorkspace.shared.frontmostApplication
@@ -66,12 +68,29 @@ final class ReadingGuardMonitor {
                 state.readingSeconds += deltaSeconds
             }
 
-            if matches(appName: frontmostApp, bundleID: frontmostBundleID, executableName: frontmostExecutable, against: config.blacklist), state.readingSeconds < config.dailyReadingTargetSeconds {
-                if shouldBlock(frontmostApp: frontmostApp, state: state, now: now) {
+            if let matchedBlacklist = firstMatch(appName: frontmostApp, bundleID: frontmostBundleID, executableName: frontmostExecutable, against: config.blacklist) {
+                let deltaSeconds = max(1, Int(elapsed.rounded(.down)))
+                state.blacklistUsageSeconds[matchedBlacklist, default: 0] += deltaSeconds
+
+                let usedSeconds = state.blacklistUsageSeconds[matchedBlacklist, default: 0]
+                let dailyLimitSeconds = config.blacklistLimits[matchedBlacklist] ?? 3600
+                let readingRequirementActive = state.readingSeconds < config.dailyReadingTargetSeconds
+                let blacklistLimitReached = usedSeconds >= dailyLimitSeconds
+                let blockReason = readingRequirementActive ? "reading_target" : (blacklistLimitReached ? "daily_limit" : "")
+
+                if !blockReason.isEmpty, shouldBlock(frontmostApp: frontmostApp, state: state, reason: blockReason, now: now) {
                     quit(appName: frontmostApp, bundleID: frontmostBundleID, executableName: frontmostExecutable)
-                    notify(appName: frontmostApp, requiredSeconds: config.dailyReadingTargetSeconds, readingSeconds: state.readingSeconds)
+                    notify(
+                        appName: frontmostApp,
+                        requiredSeconds: config.dailyReadingTargetSeconds,
+                        readingSeconds: state.readingSeconds,
+                        blacklistLimitSeconds: dailyLimitSeconds,
+                        blacklistUsedSeconds: usedSeconds,
+                        reason: blockReason
+                    )
                     state.lastBlockedApp = frontmostApp
                     state.lastBlockedAt = isoFormatter.string(from: now)
+                    state.lastBlockedReason = blockReason
                 }
             }
         }
@@ -92,12 +111,14 @@ final class ReadingGuardMonitor {
         let target = max(60, guardRaw["dailyReadingTargetSeconds"] as? Int ?? 1800)
         let whitelist = parseStringList(guardRaw["whitelist"])
         let blacklist = parseStringList(guardRaw["blacklist"])
+        let blacklistLimits = parseIntMap(guardRaw["blacklistLimits"], allowedKeys: blacklist, defaultValue: 3600)
 
         return ReadingGuardConfig(
             enabled: enabled,
             dailyReadingTargetSeconds: target,
             whitelist: whitelist,
-            blacklist: blacklist
+            blacklist: blacklist,
+            blacklistLimits: blacklistLimits
         )
     }
 
@@ -112,13 +133,15 @@ final class ReadingGuardMonitor {
         return ReadingGuardState(
             date: raw["date"] as? String ?? "",
             readingSeconds: max(0, raw["readingSeconds"] as? Int ?? 0),
+            blacklistUsageSeconds: parseIntMap(raw["blacklistUsageSeconds"], allowedKeys: nil, defaultValue: 0),
             currentFrontmostApp: raw["currentFrontmostApp"] as? String ?? "",
             currentFrontmostBundleID: raw["currentFrontmostBundleID"] as? String ?? "",
             currentFrontmostExecutable: raw["currentFrontmostExecutable"] as? String ?? "",
             lastObservedApp: raw["lastObservedApp"] as? String ?? "",
             lastObservedBundleID: raw["lastObservedBundleID"] as? String ?? "",
             lastBlockedApp: raw["lastBlockedApp"] as? String ?? "",
-            lastBlockedAt: raw["lastBlockedAt"] as? String ?? ""
+            lastBlockedAt: raw["lastBlockedAt"] as? String ?? "",
+            lastBlockedReason: raw["lastBlockedReason"] as? String ?? ""
         )
     }
 
@@ -127,6 +150,7 @@ final class ReadingGuardMonitor {
         let payload: [String: Any] = [
             "date": state.date,
             "readingSeconds": state.readingSeconds,
+            "blacklistUsageSeconds": state.blacklistUsageSeconds,
             "currentFrontmostApp": state.currentFrontmostApp,
             "currentFrontmostBundleID": state.currentFrontmostBundleID,
             "currentFrontmostExecutable": state.currentFrontmostExecutable,
@@ -134,6 +158,7 @@ final class ReadingGuardMonitor {
             "lastObservedBundleID": state.lastObservedBundleID,
             "lastBlockedApp": state.lastBlockedApp,
             "lastBlockedAt": state.lastBlockedAt,
+            "lastBlockedReason": state.lastBlockedReason,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted]) else {
             return
@@ -141,8 +166,11 @@ final class ReadingGuardMonitor {
         try? data.write(to: stateURL, options: [.atomic])
     }
 
-    private func shouldBlock(frontmostApp: String, state: ReadingGuardState, now: Date) -> Bool {
+    private func shouldBlock(frontmostApp: String, state: ReadingGuardState, reason: String, now: Date) -> Bool {
         if state.lastBlockedApp.caseInsensitiveCompare(frontmostApp) != .orderedSame {
+            return true
+        }
+        if state.lastBlockedReason != reason {
             return true
         }
 
@@ -153,7 +181,7 @@ final class ReadingGuardMonitor {
             return true
         }
 
-        return now.timeIntervalSince(blockedAt) >= 5
+        return now.timeIntervalSince(blockedAt) >= 1
     }
 
     private func quit(appName: String, bundleID: String, executableName: String) {
@@ -185,10 +213,17 @@ final class ReadingGuardMonitor {
         }
     }
 
-    private func notify(appName: String, requiredSeconds: Int, readingSeconds: Int) {
+    private func notify(appName: String, requiredSeconds: Int, readingSeconds: Int, blacklistLimitSeconds: Int, blacklistUsedSeconds: Int, reason: String) {
         let requiredMinutes = requiredSeconds / 60
         let readMinutes = readingSeconds / 60
-        let message = "今日阅读不足 \(requiredMinutes) 分钟，已强制关闭 \(appName)。当前仅累计 \(readMinutes) 分钟。"
+        let limitMinutes = max(1, blacklistLimitSeconds / 60)
+        let usedMinutes = blacklistUsedSeconds / 60
+        let message: String
+        if reason == "daily_limit" {
+            message = "\(appName) 今日娱乐时长已达 \(limitMinutes) 分钟，已强制关闭。当前已使用 \(usedMinutes) 分钟。"
+        } else {
+            message = "今日阅读不足 \(requiredMinutes) 分钟，已强制关闭 \(appName)。当前仅累计 \(readMinutes) 分钟。"
+        }
         runAppleScript("display notification \"\(escapeAppleScript(message))\" with title \"先读书，后娱乐\"")
     }
 
@@ -200,18 +235,24 @@ final class ReadingGuardMonitor {
     }
 
     private func matches(appName: String, bundleID: String, executableName: String, against items: [String]) -> Bool {
+        firstMatch(appName: appName, bundleID: bundleID, executableName: executableName, against: items) != nil
+    }
+
+    private func firstMatch(appName: String, bundleID: String, executableName: String, against items: [String]) -> String? {
         let candidates = [appName, bundleID, executableName]
             .map(normalizeMatchToken)
             .filter { !$0.isEmpty }
 
-        return items
-            .map(normalizeMatchToken)
-            .filter { !$0.isEmpty }
-            .contains { item in
-                candidates.contains(where: { candidate in
-                    candidate == item || candidate.contains(item) || item.contains(candidate)
-                })
+        return items.first { originalItem in
+            let item = normalizeMatchToken(originalItem)
+            guard !item.isEmpty else {
+                return false
             }
+            
+            return candidates.contains(where: { candidate in
+                candidate == item || candidate.contains(item) || item.contains(candidate)
+            })
+        }
     }
 
     private func normalizeMatchToken(_ value: String) -> String {
@@ -261,6 +302,53 @@ final class ReadingGuardMonitor {
         return nil
     }
 
+    private func parseIntMap(_ value: Any?, allowedKeys: [String]?, defaultValue: Int) -> [String: Int] {
+        guard let raw = value as? [String: Any] else {
+            return buildDefaultIntMap(keys: allowedKeys, defaultValue: defaultValue)
+        }
+
+        var parsed: [String: Int] = [:]
+        for (key, item) in raw {
+            let trimmedKey = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedKey.isEmpty else {
+                continue
+            }
+
+            let parsedValue: Int
+            if let intValue = item as? Int {
+                parsedValue = intValue
+            } else if let stringValue = item as? String, let intValue = Int(stringValue) {
+                parsedValue = intValue
+            } else {
+                parsedValue = defaultValue
+            }
+
+            parsed[trimmedKey] = max(0, parsedValue)
+        }
+
+        guard let allowedKeys else {
+            return parsed
+        }
+
+        var filtered = buildDefaultIntMap(keys: allowedKeys, defaultValue: defaultValue)
+        for key in allowedKeys where parsed[key] != nil {
+            filtered[key] = max(60, parsed[key] ?? defaultValue)
+        }
+        return filtered
+    }
+
+    private func buildDefaultIntMap(keys: [String]?, defaultValue: Int) -> [String: Int] {
+        guard let keys else {
+            return [:]
+        }
+
+        var result: [String: Int] = [:]
+        for key in keys {
+            result[key] = max(60, defaultValue)
+        }
+        return result
+    }
+
     private func currentDayString(_ now: Date) -> String {
         dayFormatter.string(from: now)
     }
@@ -275,11 +363,13 @@ struct ReadingGuardConfig {
     var dailyReadingTargetSeconds: Int = 1800
     var whitelist: [String] = ["图书", "Books", "预览", "Preview", "Kindle"]
     var blacklist: [String] = ["WeChat", "微信", "QQ", "网易云音乐", "Douyin"]
+    var blacklistLimits: [String: Int] = ["WeChat": 3600, "微信": 3600, "QQ": 3600, "网易云音乐": 3600, "Douyin": 3600]
 }
 
 struct ReadingGuardState {
     var date: String = ""
     var readingSeconds: Int = 0
+    var blacklistUsageSeconds: [String: Int] = [:]
     var currentFrontmostApp: String = ""
     var currentFrontmostBundleID: String = ""
     var currentFrontmostExecutable: String = ""
@@ -287,6 +377,7 @@ struct ReadingGuardState {
     var lastObservedBundleID: String = ""
     var lastBlockedApp: String = ""
     var lastBlockedAt: String = ""
+    var lastBlockedReason: String = ""
 }
 
 let monitor = ReadingGuardMonitor()
